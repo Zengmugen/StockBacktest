@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """A 股策略回测工具 —— 图形界面(tkinter)
 
-输入股票代码与参数,点击"开始回测"即可查看绩效指标与资金曲线图。
-不懂代码也能用。
+选择策略、输入股票代码与参数,点击"开始回测"即可查看绩效指标与资金曲线图。
+内置双均线 / RSI / 布林带 / MACD 四种策略。不懂代码也能用。
 """
 
 import os
@@ -15,8 +15,8 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from stock_backtest import (
-    BacktestConfig, load_data_akshare, load_data_csv,
-    signal_ma_cross, run_backtest, format_metrics,
+    BacktestConfig, STRATEGIES, strategy_label_to_key,
+    load_data_akshare, load_data_csv, run_backtest, format_metrics,
 )
 from plotting import render_axes
 
@@ -26,37 +26,62 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 class BacktestApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("A 股策略回测工具  ·  双均线策略")
-        root.geometry("1100x760")
+        root.title("A 股策略回测工具  ·  多策略")
+        root.geometry("1150x780")
 
+        self.param_vars = {}   # 当前策略的参数变量
         self._build_input_bar()
         self._build_body()
-        self._set_status("就绪。输入股票代码后点击「开始回测」;无网络可点「示例数据演示」。")
+        self._rebuild_params()  # 初始化参数区
+        self._set_status("就绪。选择策略、输入股票代码后点「开始回测」;无网络可点「示例数据演示」。")
 
-    # ----- 顶部输入栏 -----
+    # ----- 顶部输入区(两行) -----
     def _build_input_bar(self):
-        bar = ttk.Frame(self.root, padding=10)
+        bar = ttk.Frame(self.root, padding=(10, 8))
         bar.pack(side=tk.TOP, fill=tk.X)
 
+        # 第一行:代码 / 日期 / 资金 / 按钮
+        row1 = ttk.Frame(bar)
+        row1.pack(side=tk.TOP, fill=tk.X)
         self.vars = {
             "symbol": tk.StringVar(value="000001"),
             "start": tk.StringVar(value="20220101"),
             "end": tk.StringVar(value=dt.date.today().strftime("%Y%m%d")),
-            "short": tk.StringVar(value="5"),
-            "long": tk.StringVar(value="20"),
             "cash": tk.StringVar(value="100000"),
         }
-        fields = [
-            ("股票代码", "symbol", 8), ("开始日期", "start", 9), ("结束日期", "end", 9),
-            ("短均线", "short", 5), ("长均线", "long", 5), ("初始资金", "cash", 9),
-        ]
-        for label, key, width in fields:
-            ttk.Label(bar, text=label).pack(side=tk.LEFT, padx=(6, 2))
-            ttk.Entry(bar, textvariable=self.vars[key], width=width).pack(side=tk.LEFT)
-
-        self.run_btn = ttk.Button(bar, text="开始回测", command=self.on_run)
+        for label, key, width in [("股票代码", "symbol", 8), ("开始日期", "start", 9),
+                                  ("结束日期", "end", 9), ("初始资金", "cash", 9)]:
+            ttk.Label(row1, text=label).pack(side=tk.LEFT, padx=(6, 2))
+            ttk.Entry(row1, textvariable=self.vars[key], width=width).pack(side=tk.LEFT)
+        self.run_btn = ttk.Button(row1, text="开始回测", command=self.on_run)
         self.run_btn.pack(side=tk.LEFT, padx=12)
-        ttk.Button(bar, text="示例数据演示", command=self.on_run_sample).pack(side=tk.LEFT)
+        ttk.Button(row1, text="示例数据演示", command=self.on_run_sample).pack(side=tk.LEFT)
+
+        # 第二行:策略选择 + 动态参数
+        row2 = ttk.Frame(bar)
+        row2.pack(side=tk.TOP, fill=tk.X, pady=(8, 0))
+        ttk.Label(row2, text="策略").pack(side=tk.LEFT, padx=(6, 2))
+        labels = [s["label"] for s in STRATEGIES.values()]
+        self.strategy_var = tk.StringVar(value=labels[0])
+        combo = ttk.Combobox(row2, textvariable=self.strategy_var, values=labels,
+                             state="readonly", width=16)
+        combo.pack(side=tk.LEFT)
+        combo.bind("<<ComboboxSelected>>", lambda e: self._rebuild_params())
+        ttk.Label(row2, text="   参数:").pack(side=tk.LEFT)
+        self.param_frame = ttk.Frame(row2)
+        self.param_frame.pack(side=tk.LEFT)
+
+    def _rebuild_params(self):
+        """根据当前策略重建参数输入框。"""
+        for w in self.param_frame.winfo_children():
+            w.destroy()
+        self.param_vars = {}
+        key = strategy_label_to_key(self.strategy_var.get())
+        for pk, plabel, default, _typ in STRATEGIES[key]["params"]:
+            ttk.Label(self.param_frame, text=plabel).pack(side=tk.LEFT, padx=(8, 2))
+            var = tk.StringVar(value=str(default))
+            ttk.Entry(self.param_frame, textvariable=var, width=6).pack(side=tk.LEFT)
+            self.param_vars[pk] = var
 
     # ----- 主体:左指标 + 右图表 -----
     def _build_body(self):
@@ -78,8 +103,6 @@ class BacktestApp:
 
         self.status = ttk.Label(self.root, text="", anchor=tk.W, relief=tk.SUNKEN, padding=4)
         self.status.pack(side=tk.BOTTOM, fill=tk.X)
-
-        # 免责声明
         ttk.Label(self.root, text="免责声明:本工具仅用于历史数据的技术回测与学习研究,不构成任何投资建议。",
                   foreground="#888").pack(side=tk.BOTTOM, fill=tk.X, padx=6)
 
@@ -113,12 +136,15 @@ class BacktestApp:
     def _worker(self, loader):
         try:
             df, name = loader()
-            short = int(self.vars["short"].get())
-            long = int(self.vars["long"].get())
+            key = strategy_label_to_key(self.strategy_var.get())
+            spec = STRATEGIES[key]
+            kwargs = {}
+            for pk, plabel, default, typ in spec["params"]:
+                kwargs[pk] = typ(self.param_vars[pk].get())
             cash = float(self.vars["cash"].get())
-            pos = signal_ma_cross(df, short, long)
+            pos = spec["func"](df, **kwargs)
             result = run_backtest(df, pos, BacktestConfig(initial_cash=cash))
-            title = f"{name}  双均线({short}/{long})回测"
+            title = f"{name}  {spec['label']}  回测"
             self.root.after(0, self._show_result, result, title)
         except Exception as e:  # noqa: BLE001
             self.root.after(0, self._show_error, str(e))

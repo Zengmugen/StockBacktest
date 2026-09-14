@@ -104,6 +104,84 @@ def signal_ma_cross(df: pd.DataFrame, short: int = 5, long: int = 20) -> pd.Seri
     return pos
 
 
+def _rsi(close: pd.Series, period: int) -> pd.Series:
+    """相对强弱指标 RSI(Wilder 平滑)。"""
+    delta = close.diff()
+    up = delta.clip(lower=0)
+    down = -delta.clip(upper=0)
+    roll_up = up.ewm(alpha=1 / period, adjust=False).mean()
+    roll_down = down.ewm(alpha=1 / period, adjust=False).mean()
+    rs = roll_up / roll_down.replace(0, np.nan)
+    return 100 - 100 / (1 + rs)
+
+
+def signal_rsi(df: pd.DataFrame, period: int = 14, oversold: int = 30,
+               overbought: int = 70) -> pd.Series:
+    """RSI 策略:超卖(RSI<oversold)买入,超买(RSI>overbought)卖出,中间持有。"""
+    rsi = _rsi(df["close"], period)
+    sig = pd.Series(np.nan, index=df.index)
+    sig[rsi < oversold] = 1
+    sig[rsi > overbought] = 0
+    pos = sig.ffill().fillna(0)
+    return pos.shift(1).fillna(0)
+
+
+def signal_bollinger(df: pd.DataFrame, period: int = 20, num_std: float = 2.0) -> pd.Series:
+    """布林带均值回归:跌破下轨买入,回到中轨卖出。"""
+    mid = df["close"].rolling(period).mean()
+    std = df["close"].rolling(period).std()
+    lower = mid - num_std * std
+    sig = pd.Series(np.nan, index=df.index)
+    sig[df["close"] < lower] = 1
+    sig[df["close"] > mid] = 0
+    pos = sig.ffill().fillna(0)
+    return pos.shift(1).fillna(0)
+
+
+def signal_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.Series:
+    """MACD 策略:DIF 上穿 DEA(信号线)持仓,下穿空仓。"""
+    ema_fast = df["close"].ewm(span=fast, adjust=False).mean()
+    ema_slow = df["close"].ewm(span=slow, adjust=False).mean()
+    dif = ema_fast - ema_slow
+    dea = dif.ewm(span=signal, adjust=False).mean()
+    pos = (dif > dea).astype(int)
+    return pos.shift(1).fillna(0)
+
+
+# 策略注册表:key -> {label, func, params[(key,label,default,type), ...]}
+STRATEGIES = {
+    "ma": {
+        "label": "双均线 MA",
+        "func": signal_ma_cross,
+        "params": [("short", "短周期", 5, int), ("long", "长周期", 20, int)],
+    },
+    "rsi": {
+        "label": "RSI 超买超卖",
+        "func": signal_rsi,
+        "params": [("period", "周期", 14, int), ("oversold", "超卖线", 30, int),
+                   ("overbought", "超买线", 70, int)],
+    },
+    "boll": {
+        "label": "布林带 均值回归",
+        "func": signal_bollinger,
+        "params": [("period", "周期", 20, int), ("num_std", "标准差倍数", 2.0, float)],
+    },
+    "macd": {
+        "label": "MACD 金叉死叉",
+        "func": signal_macd,
+        "params": [("fast", "快线", 12, int), ("slow", "慢线", 26, int),
+                   ("signal", "信号线", 9, int)],
+    },
+}
+
+
+def strategy_label_to_key(label: str) -> str:
+    for k, v in STRATEGIES.items():
+        if v["label"] == label:
+            return k
+    raise ValueError(f"未知策略: {label}")
+
+
 # --------------------------------------------------------------------------- #
 # 回测引擎
 # --------------------------------------------------------------------------- #
