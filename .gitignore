@@ -9,3 +9,9 @@ venv/
 # 回测生成的临时输出图(示例/演示图在 screenshots/ 里保留)
 result_*.png
 backtest_result.png
+nul*
+
+# PyInstaller 构建产物(体积大,不入库)
+build/
+dist/
+*.spec

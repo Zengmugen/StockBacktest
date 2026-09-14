@@ -6,7 +6,7 @@
 
 ## 功能
 
-- **自动获取行情**:通过 `akshare` 免费获取 A 股日线数据(也支持读取本地 CSV)
+- **自动获取行情**:通过东方财富公开接口(仅需 `requests`)免费获取 A 股日线数据(也支持读取本地 CSV;另可切换到 `akshare`)
 - **四种内置策略**(参数均可调):
   - 双均线 MA:短均线上穿长均线买入、下穿卖出
   - RSI 超买超卖:超卖买入、超买卖出
@@ -61,7 +61,7 @@ CSV 需包含 `date, open, high, low, close, volume` 列（中英文列名均可
 
 ## 技术栈
 
-Python · pandas · numpy · matplotlib · akshare · tkinter
+Python · pandas · numpy · matplotlib · requests · tkinter
 
 ## License
 

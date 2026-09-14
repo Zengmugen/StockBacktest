@@ -12,7 +12,7 @@ import argparse
 import datetime as dt
 
 from stock_backtest import (
-    BacktestConfig, STRATEGIES, load_data_akshare, load_data_csv,
+    BacktestConfig, STRATEGIES, load_data_online, load_data_csv,
     run_backtest, format_metrics,
 )
 from plotting import plot_result
@@ -49,7 +49,7 @@ def main():
         name = args.csv
     elif args.symbol:
         print(f"正在获取 {args.symbol} 的行情数据 ...")
-        df = load_data_akshare(args.symbol, args.start, args.end)
+        df = load_data_online(args.symbol, args.start, args.end)
         name = args.symbol
     else:
         p.error("请提供 --symbol 或 --csv")

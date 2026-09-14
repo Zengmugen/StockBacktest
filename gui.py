@@ -6,6 +6,7 @@
 """
 
 import os
+import sys
 import threading
 import datetime as dt
 import tkinter as tk
@@ -16,7 +17,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from stock_backtest import (
     BacktestConfig, STRATEGIES, strategy_label_to_key,
-    load_data_akshare, load_data_csv, run_backtest, format_metrics,
+    load_data_online, load_data_csv, run_backtest, format_metrics,
 )
 from plotting import render_axes
 
@@ -123,15 +124,24 @@ class BacktestApp:
 
     def _load_online(self):
         v = self.vars
-        df = load_data_akshare(v["symbol"].get().strip(), v["start"].get().strip(),
-                               v["end"].get().strip())
+        df = load_data_online(v["symbol"].get().strip(), v["start"].get().strip(),
+                              v["end"].get().strip())
         return df, v["symbol"].get().strip()
 
     def _load_sample(self):
-        path = os.path.join(HERE, "sample_data.csv")
-        if not os.path.exists(path):
-            raise FileNotFoundError("未找到 sample_data.csv 示例数据文件。")
-        return load_data_csv(path), "示例数据"
+        # 兼容源码运行与 PyInstaller 打包后的多种目录布局
+        candidates = [os.path.join(HERE, "sample_data.csv")]
+        if getattr(sys, "frozen", False):
+            base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+            candidates += [
+                os.path.join(base, "sample_data.csv"),
+                os.path.join(os.path.dirname(sys.executable), "sample_data.csv"),
+                os.path.join(os.path.dirname(sys.executable), "_internal", "sample_data.csv"),
+            ]
+        for path in candidates:
+            if os.path.exists(path):
+                return load_data_csv(path), "示例数据"
+        raise FileNotFoundError("未找到 sample_data.csv 示例数据文件。")
 
     def _worker(self, loader):
         try:

@@ -70,6 +70,59 @@ def load_data_akshare(symbol: str, start: str, end: str, adjust: str = "qfq") ->
     return df
 
 
+def load_data_eastmoney(symbol: str, start: str, end: str, adjust: str = "qfq") -> pd.DataFrame:
+    """用东方财富公开行情接口获取 A 股日线数据(轻量,仅依赖 requests)。
+
+    symbol : 6 位股票代码,如 "000001"、"600519"
+    start/end : "YYYYMMDD"
+    adjust : "qfq"(前复权)/"hfq"(后复权)/""(不复权)
+    """
+    import time
+    import requests
+
+    market = 1 if symbol.startswith("6") else 0  # 6 开头为沪市,其余归深/北
+    secid = f"{market}.{symbol}"
+    fqt = {"qfq": 1, "hfq": 2, "": 0}.get(adjust, 1)
+    url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    params = {
+        "secid": secid,
+        "ut": "7eea3edcaed734bea9cbfc24409ed989",
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57",  # 日期,开,收,高,低,量,额
+        "klt": 101, "fqt": fqt, "beg": start, "end": end,
+    }
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    js, last_err = None, None
+    for _ in range(3):  # 接口偶发抖动,自动重试
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            r.raise_for_status()
+            js = r.json()
+            break
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            time.sleep(1.2)
+    if js is None:
+        raise ConnectionError(f"获取 {symbol} 行情失败,请检查网络后重试。原因: {last_err}")
+
+    data = (js or {}).get("data") or {}
+    klines = data.get("klines")
+    if not klines:
+        raise ValueError(f"未获取到 {symbol} 在 {start}~{end} 的数据,请检查代码或日期。")
+
+    rows = [k.split(",") for k in klines]
+    df = pd.DataFrame(rows, columns=["date", "open", "close", "high", "low", "volume", "amount"])
+    df["date"] = pd.to_datetime(df["date"])
+    for c in ["open", "high", "low", "close", "volume"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df[["date", "open", "high", "low", "close", "volume"]].set_index("date").sort_index()
+
+
+# 默认在线数据源(轻量);如需可改为 load_data_akshare
+load_data_online = load_data_eastmoney
+
+
 def load_data_csv(path: str) -> pd.DataFrame:
     """从本地 CSV 读取行情。需包含 date/open/high/low/close/volume 列(中英文均可)。"""
     df = pd.read_csv(path)
