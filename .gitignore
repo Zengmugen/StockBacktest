@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.idea/
+.vscode/
+
+# 回测生成的临时输出图(示例/演示图在 screenshots/ 里保留)
+result_*.png
+backtest_result.png
